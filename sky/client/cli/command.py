@@ -5248,7 +5248,7 @@ def api():
                     'access.'))
 @click.option('--host',
               default='127.0.0.1',
-              type=click.Choice(server_common.AVAILBLE_LOCAL_API_SERVER_HOSTS),
+              type=click.Choice(server_constants.AVAILABLE_LOCAL_API_SERVER_HOSTS),
               required=False,
               help=('The host to deploy the SkyPilot API server. To allow '
                     'remote access, set this to 0.0.0.0'))

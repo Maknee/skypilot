@@ -48,12 +48,6 @@ else:
     pydantic = adaptors_common.LazyImport('pydantic')
     requests = adaptors_common.LazyImport('requests')
 
-DEFAULT_SERVER_URL = 'http://127.0.0.1:46580'
-AVAILBLE_LOCAL_API_SERVER_HOSTS = ['0.0.0.0', 'localhost', '127.0.0.1']
-AVAILABLE_LOCAL_API_SERVER_URLS = [
-    f'http://{host}:46580' for host in AVAILBLE_LOCAL_API_SERVER_HOSTS
-]
-
 API_SERVER_CMD = '-m sky.server.server'
 # The client dir on the API server for storing user-specific data, such as file
 # mounts, logs, etc. This dir is empheral and will be cleaned up when the API
@@ -220,7 +214,7 @@ def make_authenticated_request(method: str,
 
 @annotations.lru_cache(scope='global')
 def get_server_url(host: Optional[str] = None) -> str:
-    endpoint = DEFAULT_SERVER_URL
+    endpoint = server_constants.DEFAULT_SERVER_URL
     if host is not None:
         endpoint = f'http://{host}:46580'
 
@@ -253,7 +247,7 @@ def get_dashboard_url(server_url: str,
 
 @annotations.lru_cache(scope='global')
 def is_api_server_local():
-    return get_server_url() in AVAILABLE_LOCAL_API_SERVER_URLS
+    return common_utils.is_api_server_local()
 
 
 def _handle_non_200_server_status(
@@ -402,7 +396,7 @@ def _start_api_server(deploy: bool = False,
                       enable_basic_auth: bool = False):
     """Starts a SkyPilot API server locally."""
     server_url = get_server_url(host)
-    assert server_url in AVAILABLE_LOCAL_API_SERVER_URLS, (
+    assert server_url in server_constants.AVAILABLE_LOCAL_API_SERVER_URLS, (
         f'server url {server_url} is not a local url')
     with rich_utils.client_status('Starting SkyPilot API server, '
                                   f'view logs at {constants.API_SERVER_LOGS}'):

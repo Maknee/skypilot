@@ -37,6 +37,7 @@ from sky.adaptors import common as adaptors_common
 from sky.client import common as client_common
 from sky.client import oauth as oauth_lib
 from sky.server import common as server_common
+from sky.server import constants as server_constants
 from sky.server import rest
 from sky.server.requests import payloads
 from sky.server.requests import requests as requests_lib
@@ -1943,9 +1944,9 @@ def api_start(
     """
     if deploy:
         host = '0.0.0.0'
-    if host not in server_common.AVAILBLE_LOCAL_API_SERVER_HOSTS:
+    if host not in server_constants.AVAILABLE_LOCAL_API_SERVER_HOSTS:
         raise ValueError(f'Invalid host: {host}. Should be one of: '
-                         f'{server_common.AVAILBLE_LOCAL_API_SERVER_HOSTS}')
+                         f'{server_constants.AVAILABLE_LOCAL_API_SERVER_HOSTS}')
     is_local_api_server = server_common.is_api_server_local()
     if not is_local_api_server:
         server_url = server_common.get_server_url()
