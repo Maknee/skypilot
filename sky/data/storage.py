@@ -388,6 +388,40 @@ class AbstractStore:
         self._validate()
         self.initialize()
 
+    NAME: str = ""                    # "aws", "minio", "wasabi"
+    DISPLAY_NAME: str = ""           # "Amazon S3", "MinIO"
+    URL_PATTERNS: List[str] = []     # ["s3://", "minio://"]
+
+    @classmethod
+    def can_handle(cls, url: str) -> bool:
+        """Check if this provider can handle the URL"""
+        for pattern in cls.URL_PATTERNS:
+            if url.startswith(pattern) or re.match(pattern, url):
+                return True
+        return False
+    
+    @classmethod
+    def parse_url(cls, url: str) -> tuple[str, str]:
+        """Parse URL into (bucket, path)"""
+        for pattern in cls.URL_PATTERNS:
+            if url.startswith(pattern):
+                remainder = url[len(pattern):]
+                parts = remainder.split('/', 1)
+                bucket = parts[0]
+                path = parts[1] if len(parts) > 1 else ""
+                return bucket, path
+        raise ValueError(f"Cannot parse URL: {url}")
+
+    def split_path(self, path: str) -> Tuple[str, str]:
+        pattern = URL_PATTERNS[0]
+        path_parts = s3_path.replace(pattern, '').split('/')
+        bucket = path_parts.pop(0)
+        key = '/'.join(path_parts)
+        return bucket, key
+
+    def verify_bucket(self):
+        pass
+
     @property
     def bucket_sub_path(self) -> Optional[str]:
         """Get the bucket_sub_path."""
@@ -546,7 +580,6 @@ class AbstractStore:
                         'instead of its name. I.e., replace '
                         f'`name: {self.name}` with '
                         f'`source: {source_endpoint}`.')
-
 
 class Storage(object):
     """Storage objects handle persistent and large volume storage in the sky.
@@ -1519,6 +1552,10 @@ class S3CompatibleStore(AbstractStore):
 
     """
 
+    NAME = ""
+    DISPLAY_NAME = ""
+    URL_PATTERNS = []
+
     _ACCESS_DENIED_MESSAGE = 'Access Denied'
 
     def __init__(self,
@@ -2094,6 +2131,10 @@ class GcsStore(AbstractStore):
     for GCS buckets.
     """
 
+    NAME = "GCS"
+    DISPLAY_NAME = "Google Store"
+    URL_PATTERNS = ["gcs://"]
+
     _ACCESS_DENIED_MESSAGE = 'AccessDeniedException'
 
     def __init__(self,
@@ -2618,6 +2659,10 @@ class GcsStore(AbstractStore):
 
 class AzureBlobStore(AbstractStore):
     """Represents the backend for Azure Blob Storage Container."""
+
+    NAME = "Azure"
+    DISPLAY_NAME = "AzureBlob"
+    URL_PATTERNS = ["az://"]
 
     _ACCESS_DENIED_MESSAGE = 'Access Denied'
     DEFAULT_RESOURCE_GROUP_NAME = 'sky{user_hash}'
@@ -3495,6 +3540,11 @@ class IBMCosStore(AbstractStore):
     """IBMCosStore inherits from Storage Object and represents the backend
     for COS buckets.
     """
+
+    NAME = "COS"
+    DISPLAY_NAME = "IBM COS"
+    URL_PATTERNS = ["cos://"]
+
     _ACCESS_DENIED_MESSAGE = 'Access Denied'
 
     def __init__(self,
@@ -3960,6 +4010,10 @@ class OciStore(AbstractStore):
     for OCI buckets.
     """
 
+    NAME = "OCI"
+    DISPLAY_NAME = "Oracle"
+    URL_PATTERNS = ["oci://"]
+
     _ACCESS_DENIED_MESSAGE = 'AccessDeniedException'
 
     def __init__(self,
@@ -4423,6 +4477,10 @@ class S3Store(S3CompatibleStore):
     for S3 buckets.
     """
 
+    NAME = "aws"
+    DISPLAY_NAME = "Amazon S3"
+    URL_PATTERNS = ["s3://"]
+    
     _DEFAULT_REGION = 'us-east-1'
     _CUSTOM_ENDPOINT_REGIONS = [
         'ap-east-1', 'me-south-1', 'af-south-1', 'eu-south-1', 'eu-south-2',
@@ -4482,6 +4540,10 @@ class R2Store(S3CompatibleStore):
     for R2 buckets.
     """
 
+    NAME = "r2"
+    DISPLAY_NAME = "Cloudflare"
+    URL_PATTERNS = ["r2://"]
+
     def __init__(self,
                  name: str,
                  source: str,
@@ -4491,6 +4553,14 @@ class R2Store(S3CompatibleStore):
                  _bucket_sub_path: Optional[str] = None):
         super().__init__(name, source, region, is_sky_managed,
                          sync_on_reconstruction, _bucket_sub_path)
+
+    def verify_bucket(self):
+        r2 = cloudflare.resource('s3')
+        bucket = r2.Bucket(name)
+        return bucket in r2.buckets.all()
+
+    def get_endpoint_url(self):
+        return cloudflare.create_endpoint()
 
     @classmethod
     def get_config(cls) -> S3CompatibleConfig:
@@ -4532,6 +4602,10 @@ class NebiusStore(S3CompatibleStore):
     for Nebius Object Storage buckets.
     """
 
+    NAME = "nebius"
+    DISPLAY_NAME = "Nebius Buckets"
+    URL_PATTERNS = ["nebius://"]
+
     @classmethod
     def get_config(cls) -> S3CompatibleConfig:
         """Return the configuration for Nebius Object Storage."""
@@ -4570,3 +4644,47 @@ class NebiusStore(S3CompatibleStore):
             rclone_config, rclone_profile_name, self.bucket.name, mount_path)
         return mounting_utils.get_mounting_command(mount_path, install_cmd,
                                                    mount_cached_cmd)
+
+# Keep this at the bottom of the file to discover all stores
+class StoreRegistry:
+    """Auto-discovers all AbstractStore subclasses"""
+    
+    def __init__(self):
+        self._stores: List[Type[AbstractStore]] = []
+        self._discover_stores()
+    
+    def _discover_stores(self):
+        """Auto-discover all AbstractStore subclasses"""
+        def get_all_subclasses(cls):
+            subclasses = set(cls.__subclasses__())
+            for subclass in list(subclasses):
+                subclasses.update(get_all_subclasses(subclass))
+            return subclasses
+        
+        for store_class in get_all_subclasses(AbstractStore):
+            # if not hasattr(store_class, 'NAME'):
+            #     print(f'NAME required in {store_class}')
+            # if not hasattr(store_class, 'DISPLAY_NAME'):
+            #     print(f'DISPLAY_NAME required in {store_class}')
+            # if not hasattr(store_class, 'URL_PATTERNS'):
+            #     print(f'URL_PATTERNS required in {store_class}')
+            if store_class.NAME and store_class.URL_PATTERNS:
+                self._stores.append(store_class)
+                is_s3_compatible = issubclass(store_class, S3CompatibleStore)
+                compat_type = "S3-compatible" if is_s3_compatible else "native"
+                print(f"✅ Discovered {compat_type} store: {store_class.DISPLAY_NAME}")
+    
+    def detect_store(self, url: str) -> Optional[Type[AbstractStore]]:
+        """Auto-detect store from URL"""
+        for store_class in self._stores:
+            if store_class.can_handle(url):
+                return store_class
+        return None
+    
+    def get_available_stores(self) -> List[Type[AbstractStore]]:
+        """Get all available stores"""
+        return self._stores
+
+
+# Global registry
+_registry = StoreRegistry()
